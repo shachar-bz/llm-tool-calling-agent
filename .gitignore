@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Agent run outputs
+*.log
+*_result.json
+
+# Personal / course-submission files
+partners.txt
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

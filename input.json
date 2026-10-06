@@ -1,0 +1,17 @@
+{
+  "query_name": "receipt_analysis.txt",
+  "resources": [
+    {
+      "file_name": "receipt.png",
+      "description": "A receipt image showing a purchase from a merchant. Contains the merchant name, date, total amount, and line items."
+    },
+    {
+      "file_name": "orders.db",
+      "description": "A SQLite database with one table `orders(order_id INTEGER, merchant TEXT, amount REAL, order_date TEXT, customer_id TEXT)`. Contains historical orders from many merchants."
+    },
+    {
+      "file_name": "customers.db",
+      "description": "A SQLite database with table `customers(customer_id TEXT, name TEXT, city TEXT, country TEXT)`."
+    }
+  ]
+}

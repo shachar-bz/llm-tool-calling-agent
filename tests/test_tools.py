@@ -35,8 +35,33 @@ def test_execute_sql_query_returns_rows_as_dicts(orders_db: Path):
 
 
 def test_execute_sql_query_is_read_only(orders_db: Path):
-    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+    with pytest.raises(sqlite3.DatabaseError, match="not authorized|readonly"):
         execute_sql_query("DELETE FROM orders", orders_db)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "ATTACH DATABASE 'evil.db' AS evil",
+        "VACUUM INTO 'copy.db'",
+        "PRAGMA user_version = 5",
+    ],
+)
+def test_execute_sql_query_cannot_create_or_copy_files(orders_db: Path, sql: str):
+    with pytest.raises(sqlite3.DatabaseError, match="not authorized|authorization denied"):
+        execute_sql_query(sql, orders_db)
+    assert sorted(path.name for path in orders_db.parent.iterdir()) == ["orders.db"]
+
+
+def test_execute_sql_query_allows_schema_inspection_and_ctes(orders_db: Path):
+    columns = execute_sql_query("PRAGMA TABLE_INFO(orders)", orders_db)
+    assert [column["name"] for column in columns] == ["merchant", "amount"]
+
+    rows = execute_sql_query(
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 3) SELECT SUM(i) AS s FROM n",
+        orders_db,
+    )
+    assert rows == [{"s": 6}]
 
 
 def test_execute_sql_query_reports_missing_database(tmp_path: Path):
@@ -57,6 +82,14 @@ def test_write_file_tool_writes_under_the_task_root(tmp_path: Path):
 
     assert (tmp_path / "out" / "result.json").read_text(encoding="utf-8") == '{"ok": true}'
     assert message == "Wrote 12 bytes to out/result.json"
+
+
+def test_write_file_tool_refuses_to_overwrite_task_inputs(orders_db: Path, tmp_path: Path):
+    tool = write_file_tool(Workspace(make_task(tmp_path, "my data/orders.db")))
+
+    with pytest.raises(PermissionError):
+        tool.handler(file_content="oops", file_name="my data/orders.db")
+    assert orders_db.stat().st_size > 0
 
 
 @pytest.mark.parametrize(

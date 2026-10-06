@@ -61,24 +61,44 @@ def load_task(manifest_path: str | os.PathLike) -> Task:
 
 
 class Workspace:
-    """Turns file names chosen by the model into real paths under the task root."""
+    """The task folder as tools see it: every path the model picks resolves inside it, or is refused.
+
+    Refusals are PermissionErrors worded for the model, which gets them back
+    as a tool error and can retry with a valid path.
+    """
 
     def __init__(self, task: Task):
-        self.root = task.root
+        self.root = task.root.resolve()
         self._resource_aliases = _resource_aliases(task.resources)
+        inputs = [task.manifest_path, task.query_path, task.log_path]
+        inputs += [task.root / resource.file_name for resource in task.resources]
+        self._read_only = {path.resolve() for path in inputs}
 
     def resource_path(self, name: str) -> Path:
         """Path to the input resource the model means by `name`.
 
         Models often drop directory prefixes ("receipt.png" for "data/receipt.png"),
-        so a bare file name is accepted when exactly one resource has it.
+        so a bare file name is accepted when exactly one resource has it. Declared
+        resources are trusted wherever they live; any other path must be inside the root.
         """
         aliases = self._resource_aliases
-        resolved = aliases.get(name) or aliases.get(os.path.basename(name), name)
-        return self.root / resolved
+        declared = aliases.get(name) or aliases.get(os.path.basename(name))
+        if declared is not None:
+            return (self.root / declared).resolve()
+        return self._inside_root(name)
 
-    def output_path(self, name: str | os.PathLike) -> Path:
-        return self.root / name
+    def output_path(self, name: str) -> Path:
+        """Path for a file the model wants to write. The task's inputs and its log are off-limits."""
+        path = self._inside_root(name)
+        if path in self._read_only:
+            raise PermissionError(f"{name} is an input or log of this task and must not be overwritten; write a new file")
+        return path
+
+    def _inside_root(self, name: str) -> Path:
+        path = (self.root / name).resolve()  # also follows symlinks
+        if not path.is_relative_to(self.root):
+            raise PermissionError(f"{name} is outside the task folder; use a path inside it")
+        return path
 
 
 def _resource_aliases(resources: tuple[Resource, ...]) -> dict[str, str]:

@@ -1,4 +1,4 @@
-"""Runs SQL against a SQLite file, opened read-only so the model cannot modify data."""
+"""Runs SQL against a SQLite file. The model can read data but not modify or copy it."""
 
 import sqlite3
 from contextlib import closing
@@ -7,6 +7,24 @@ from pathlib import Path
 from ..task import Workspace
 from .base import Tool
 
+# Read-only mode alone is not enough: it still lets ATTACH create files and
+# VACUUM INTO copy the whole database anywhere on disk. So only reads are authorized.
+ALLOWED_ACTIONS = {
+    sqlite3.SQLITE_SELECT,
+    sqlite3.SQLITE_READ,
+    sqlite3.SQLITE_FUNCTION,
+    sqlite3.SQLITE_RECURSIVE,
+}
+ALLOWED_PRAGMAS = {"table_info", "table_xinfo", "index_list", "index_info", "foreign_key_list"}
+
+
+def _authorize(action: int, arg1: str | None, arg2: str | None, db_name: str | None, trigger: str | None) -> int:
+    if action in ALLOWED_ACTIONS:
+        return sqlite3.SQLITE_OK
+    if action == sqlite3.SQLITE_PRAGMA and (arg1 or "").lower() in ALLOWED_PRAGMAS:
+        return sqlite3.SQLITE_OK
+    return sqlite3.SQLITE_DENY
+
 
 def execute_sql_query(sql: str, db_path: Path) -> list[dict]:
     if not db_path.is_file():
@@ -14,6 +32,7 @@ def execute_sql_query(sql: str, db_path: Path) -> list[dict]:
 
     read_only_uri = f"{db_path.resolve().as_uri()}?mode=ro"
     with closing(sqlite3.connect(read_only_uri, uri=True)) as connection:
+        connection.set_authorizer(_authorize)
         connection.row_factory = sqlite3.Row
         return [dict(row) for row in connection.execute(sql).fetchall()]
 

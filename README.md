@@ -1,78 +1,108 @@
-# Assignment #3 — Sample Files
+# LLM Tool-Calling Agent
 
-This gist contains the sample input, query, resource files, and validation function
-for Assignment #3 (Tool Calling / Function Calling).
+An LLM agent written from scratch on the raw OpenAI tool-calling API. No LangChain, LangGraph or other agent framework. Give it a natural-language query and a set of files. The model decides which tools to call and in what order, and keeps going until the query is answered.
 
-## Files in this gist
+```text
+"Look at the receipt in receipt.png, find all historical orders from that merchant in
+ orders.db, compute what percentage the receipt is of their total, and look up the city
+ of the top customer in customers.db. Write the result to receipt_analysis_result.json."
+```
 
-| File                              | Purpose                                                  |
-|-----------------------------------|----------------------------------------------------------|
-| `input.json`                      | Describes the query name and the resource files          |
-| `receipt_analysis.txt`            | The sample query your agent must answer                  |
-| `receipt_analysis_validate.py`    | Validation function the grader uses to check correctness |
-| `receipt.png`                     | Sample receipt image (Blue Moon Cafe, total $87.45)      |
-| `orders.db`                       | SQLite database with 40 historical orders                |
-| `customers.db`                    | SQLite database with 15 customer records                 |
-| `prepare_dataset.py`              | Run once to verify all files are present                 |
-| `README.md`                       | This file                                                |
+```text
+Calling LLM for next tool to invoke
+** Entering tool extract_from_image **       -> {"merchant": "Blue Moon Cafe", "total": 87.45, ...}
+** Entering tool build_sql_query **          -> SELECT SUM(amount), ... FROM orders WHERE ...
+** Entering tool execute_sql_query **        -> [{"total": 1240.3, "top_customer_id": "C0.."}]
+** Entering tool build_sql_query **          -> SELECT city FROM customers WHERE ...
+** Entering tool execute_sql_query **        -> [{"city": "Haifa"}]
+** Entering tool calculator **               -> round(87.45 / 1240.3 * 100, 2) = 7.05
+** Entering tool write_file **               -> receipt_analysis_result.json
+final response is = The receipt from Blue Moon Cafe (87.45) is 7.05% of ...
+```
 
-## Setup
+## Tools
 
-1. Download all 8 files from this gist into a single directory.
-2. From that directory, run:
-   ```
-   python prepare_dataset.py
-   ```
-   You should see: `All 6 required files found. You are ready to start working on hw3.py.`
+| Tool | What it does |
+|---|---|
+| `extract_from_image` | Vision model reads a receipt/invoice image into JSON |
+| `build_sql_query` | Text-to-SQL: writes a SQLite query from a schema description |
+| `execute_sql_query` | Runs SQL against a `.db` file, **read-only** |
+| `calculator` | Safe arithmetic by walking the AST (never `eval`) |
+| `web_search` | DuckDuckGo search for facts not in the provided files |
+| `write_file` | Writes the output files the query asks for |
 
-3. Place your `hw3.py` (your agent) in the same directory.
-4. Run your agent with:
-   ```
-   python hw3.py
-   ```
+## How it works
 
-## What your `hw3.py` must do
+```mermaid
+flowchart LR
+    M[input.json] --> T[Task]
+    T --> A[Agent loop]
+    A <-->|messages + tool schemas| L[LLM]
+    A -->|tool call| R[ToolRegistry]
+    R --> Tools
+    Tools -.->|LLM-backed tools| L
+    A --> G[RunLog: stdout + &lt;query&gt;.log]
+    B[Budget] -.->|caps LLM & tool calls| A
+```
 
-Your agent must:
+- **`Agent`** ([agent.py](tool_agent/agent.py)) runs the loop. It sends the conversation and the tool schemas to the model, runs each tool call, and appends the result. It stops when the model answers without calling a tool. If a tool fails, gets malformed arguments or names a tool that doesn't exist, the error goes back to the model as `{"error": ...}` so it can recover instead of crashing the run.
+- **`Tool` / `ToolRegistry`** ([tools/base.py](tool_agent/tools/base.py)) keep each tool's JSON schema next to the code that runs it. Adding a tool takes one module plus one line in [`build_toolbox`](tool_agent/tools/__init__.py).
+- **`LLM`** ([llm.py](tool_agent/llm.py)) is one client shared by the agent loop and the LLM-backed tools. It charges every request to the run's **`Budget`**, which caps a run at 20 LLM calls and 20 tool calls.
+- **`Task` / `Workspace`** ([task.py](tool_agent/task.py)) load the query and resources from `input.json`. All file paths are resolved relative to the folder that holds `input.json`, so you can run a task from any directory.
 
-1. Read `input.json` to discover the query name (`receipt_analysis.txt`) and the resource files.
-2. Read `receipt_analysis.txt` to get the actual query.
-3. Initialize an OpenAI client using the Azure credentials in the assignment text.
-4. Run a raw OpenAI tool-calling loop with 6 tools: `calculator`, `extract_from_image`,
-   `build_sql_query`, `execute_sql_query`, `web_search`, `write_file`.
-5. Let the LLM dynamically pick and chain the right tools to solve the query.
-6. Write the result to `receipt_analysis_result.json` (the file the query asks for).
-7. Log every step to `receipt_analysis.log` AND stdout in the required format.
+## Quickstart
 
-You may NOT use LangGraph, LangChain agents, `create_react_agent`, or any other
-prebuilt agent framework. See the assignment text for the full rubric.
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env        # then set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
 
-## Expected correct answer
+python -m tool_agent examples/receipt_analysis/input.json
+```
 
-For the sample `receipt_analysis` query, the correct JSON answer is:
+Outputs (`receipt_analysis_result.json` and the `receipt_analysis.log` transcript) are written next to `input.json`.
+
+## Writing a task
+
+A task is a folder containing an `input.json` manifest, a query file, and any resource files:
 
 ```json
 {
-  "merchant": "Blue Moon Cafe",
-  "receipt_total": 87.45,
-  "historical_total": 1240.30,
-  "percentage_of_historical": 7.05,
-  "top_customer_city": "Haifa"
+  "query_name": "receipt_analysis.txt",
+  "resources": [
+    { "file_name": "receipt.png", "description": "A receipt image ..." },
+    { "file_name": "orders.db", "description": "SQLite table orders(order_id, merchant, amount, ...)" }
+  ]
 }
 ```
 
-The validation function checks each field with appropriate tolerances for floats
-and is case-insensitive on strings.
+The model sees the resource descriptions, so include table schemas for databases.
 
-## Important notes
+## Tests
 
-- The grader will test your code with **different queries**, **different resource files**,
-  and **different validation functions** that follow the same format. Do NOT hardcode
-  anything specific to `receipt_analysis`, `Blue Moon Cafe`, the `orders` schema, or
-  any specific column name.
-- The query name's stem (without `.txt`) drives:
-  - the log file name (`receipt_analysis.log`)
-  - the validation file name (`receipt_analysis_validate.py`, with hyphens → underscores)
-  - the validation function name (`receipt_analysis_answer`)
-- Do NOT include the files from this gist with your submission. The grader will
-  provide their own sample files when grading.
+```bash
+pytest
+```
+
+The suite runs offline. A scripted fake LLM drives the agent loop through tool chaining, error recovery and both call caps. The tools are tested against real temporary SQLite files.
+
+## Project layout
+
+```text
+tool_agent/
+  agent.py          the tool-calling loop
+  cli.py            entry point: wires settings, client, tools and agent
+  config.py         settings from environment variables
+  task.py           Task manifest loading and Workspace path resolution
+  llm.py            budget-charging chat-completions client
+  budget.py         LLM / tool call caps
+  run_log.py        transcript to stdout and <query>.log
+  prompts.py        system prompt and user message
+  tools/            one module per tool, plus Tool/ToolRegistry in base.py
+examples/receipt_analysis/   sample task with validator
+tests/
+```
+
+## Authors
+
+Shachar Ben Zur and Ron Isakov. Originally built for a university assignment on LLM tool calling.

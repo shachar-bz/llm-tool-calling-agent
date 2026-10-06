@@ -63,5 +63,4 @@ def extract_from_image_tool(llm: LLM, workspace: Workspace) -> Tool:
             "required": ["image_path"],
         },
         handler=lambda image_path: extract_from_image(workspace.resource_path(image_path), llm),
-        uses_llm=True,
     )

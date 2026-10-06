@@ -8,9 +8,8 @@ from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 
 from .agent import Agent
-from .budget import Budget
 from .config import ConfigError, Settings
-from .llm import LLM
+from .llm import LLM, OpenAITransport
 from .run_log import RunLog
 from .task import Workspace, load_task
 from .tools import build_toolbox
@@ -20,11 +19,11 @@ def run_task(manifest_path: str | os.PathLike, settings: Settings) -> str | None
     """Solve the task described by an input.json manifest. Returns the final answer, or None if capped."""
     task = load_task(manifest_path)
     workspace = Workspace(task.root, task.resources)
-    budget = Budget(settings.max_llm_calls, settings.max_tool_calls)
-    llm = LLM(OpenAI(api_key=settings.api_key, base_url=settings.endpoint), settings.model, budget)
+    client = OpenAI(api_key=settings.api_key, base_url=settings.endpoint)
+    llm = LLM(OpenAITransport(client, settings.model), settings.max_llm_calls)
 
     with RunLog.open(workspace.output_path(task.log_name)) as log:
-        agent = Agent(llm, build_toolbox(llm, workspace), budget, log)
+        agent = Agent(llm, build_toolbox(llm, workspace), log, settings.max_tool_calls)
         return agent.run(task)
 
 

@@ -52,5 +52,4 @@ def build_sql_query_tool(llm: LLM) -> Tool:
         handler=lambda natural_language, schema_description: build_sql_query(
             natural_language, schema_description, llm
         ),
-        uses_llm=True,
     )

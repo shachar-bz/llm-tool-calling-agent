@@ -1,24 +1,52 @@
-"""The chat-completions client shared by the agent loop and the LLM-backed tools."""
+"""The single gateway for model requests, shared by the agent loop and the LLM-backed tools."""
+
+from typing import Any, Protocol
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessage
 
-from .budget import Budget
+
+class CallCapReached(Exception):
+    """The run has used its LLM-call cap; no further requests will be sent."""
 
 
-class LLM:
-    """Sends requests to one model and charges each request to the run's budget."""
+class Transport(Protocol):
+    """Sends one chat-completion request and returns the model's reply message."""
 
-    def __init__(self, client: OpenAI, model: str, budget: Budget):
+    def __call__(self, *, messages: list[dict], **options: Any) -> ChatCompletionMessage: ...
+
+
+class OpenAITransport:
+    """Production transport: an OpenAI-compatible chat-completions endpoint (here, Azure OpenAI)."""
+
+    def __init__(self, client: OpenAI, model: str):
         self._client = client
         self._model = model
-        self._budget = budget
 
-    def complete(self, messages: list[dict], **kwargs) -> ChatCompletionMessage:
-        self._budget.llm_calls += 1
+    def __call__(self, *, messages: list[dict], **options: Any) -> ChatCompletionMessage:
         response = self._client.chat.completions.create(
             model=self._model,
             messages=messages,
-            **kwargs,
+            **options,
         )
         return response.choices[0].message
+
+
+class LLM:
+    """Counts every model request in a run and refuses once the cap is reached.
+
+    Because the agent loop and LLM-backed tools all go through the same LLM,
+    the cap holds no matter which of them makes the request.
+    """
+
+    def __init__(self, transport: Transport, max_calls: int):
+        self._transport = transport
+        self._max_calls = max_calls
+        self._calls = 0
+
+    def complete(self, messages: list[dict], **options: Any) -> ChatCompletionMessage:
+        """Send `messages` to the model. Raises CallCapReached once the cap is used up."""
+        if self._calls >= self._max_calls:
+            raise CallCapReached(f"LLM call cap of {self._max_calls} reached")
+        self._calls += 1
+        return self._transport(messages=messages, **options)

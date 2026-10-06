@@ -5,21 +5,20 @@ import json
 from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function
 
-from tool_agent.budget import Budget
 
+class ScriptedTransport:
+    """Stands in for the provider: plays back replies (or raises exceptions) in order."""
 
-class ScriptedLLM:
-    """Stands in for `LLM`: returns pre-written replies and records every request."""
+    def __init__(self, *steps: ChatCompletionMessage | Exception):
+        self._steps = list(steps)
+        self.requests: list[dict] = []
 
-    def __init__(self, budget: Budget, replies: list[ChatCompletionMessage]):
-        self._budget = budget
-        self._replies = list(replies)
-        self.requests: list[list[dict]] = []
-
-    def complete(self, messages, **kwargs):
-        self._budget.llm_calls += 1
-        self.requests.append(list(messages))
-        return self._replies.pop(0)
+    def __call__(self, *, messages, **options):
+        self.requests.append({"messages": list(messages), **options})
+        step = self._steps.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return step
 
 
 def tool_call_reply(*calls: tuple[str, dict | str]) -> ChatCompletionMessage:
@@ -40,5 +39,5 @@ def tool_call_reply(*calls: tuple[str, dict | str]) -> ChatCompletionMessage:
     )
 
 
-def final_reply(text: str) -> ChatCompletionMessage:
+def final_reply(text: str | None) -> ChatCompletionMessage:
     return ChatCompletionMessage(role="assistant", content=text)

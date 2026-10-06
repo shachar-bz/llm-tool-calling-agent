@@ -12,8 +12,6 @@ class Tool:
     description: str
     parameters: dict[str, Any]
     handler: Callable[..., Any]
-    # True if the handler makes its own LLM request (it then counts toward the LLM cap).
-    uses_llm: bool = False
 
     @property
     def schema(self) -> dict[str, Any]:

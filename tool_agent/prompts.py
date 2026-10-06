@@ -19,11 +19,14 @@ RULES:
 
 7. STOPPING: When the query is fully solved AND any required output files have been written, respond with a brief natural-language summary and NO tool call. Do not invoke any more tools after the output file is written."""
 
-LLM_ERROR_RECOVERY_MESSAGE = (
-    "The previous LLM request failed with this provider error:\n{error}\n\n"
-    "Continue solving the original query if possible. If the error was caused by "
-    "sensitive content, avoid repeating that content and try a different safe approach."
+REJECTION_RECOVERY_MESSAGE = (
+    "The model provider rejected the previous request ({reason}):\n{detail}\n\n"
+    "Tool results returned since your last message were removed from the conversation. "
+    "Continue solving the original query if possible. If the rejection was caused by "
+    "sensitive or oversized content, avoid repeating it and try a different, safe approach."
 )
+
+REMOVED_TOOL_RESULT = "[removed: the provider rejected the request that contained this tool result]"
 
 
 def system_prompt(tool_names: list[str]) -> str:

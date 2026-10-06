@@ -3,14 +3,17 @@
 import json
 from typing import Any
 
-from openai import BadRequestError
 from openai.types.chat import ChatCompletionMessageToolCall
 
-from .llm import LLM, CallCapReached
-from .prompts import LLM_ERROR_RECOVERY_MESSAGE, system_prompt, user_message
+from .llm import LLM, CallCapReached, LLMRejected
+from .prompts import REJECTION_RECOVERY_MESSAGE, REMOVED_TOOL_RESULT, system_prompt, user_message
 from .run_log import RunLog
 from .task import Task
 from .tools import ToolRegistry
+
+# Keeps one oversized result (e.g. SELECT * on a big table) from overflowing the context.
+MAX_TOOL_RESULT_CHARS = 20_000
+MAX_REJECTION_DETAIL_CHARS = 1_000
 
 
 class Agent:
@@ -40,6 +43,7 @@ class Agent:
             return self._terminate("LLM call cap reached")
 
     def _loop(self, messages: list[dict[str, Any]]) -> str | None:
+        just_recovered = False
         while True:
             self._log.write("Calling LLM for next tool to invoke")
             try:
@@ -48,15 +52,14 @@ class Agent:
                     tools=self._tools.schemas,
                     tool_choice="auto",
                 )
-            except BadRequestError as error:
-                # Usually a provider content filter: tell the model and let it try another way.
-                detail = f"{type(error).__name__}: {error}"
-                self._log.write(f"LLM BadRequestError = {detail}")
-                messages.append({
-                    "role": "user",
-                    "content": LLM_ERROR_RECOVERY_MESSAGE.format(error=detail),
-                })
+            except LLMRejected as rejection:
+                self._log.write(f"LLM request rejected ({rejection.reason}) = {rejection}")
+                if just_recovered:
+                    return self._terminate("LLM request rejected again after recovery")
+                just_recovered = True
+                self._recover_from_rejection(messages, rejection)
                 continue
+            just_recovered = False
 
             messages.append(reply.model_dump(exclude_none=True))
             if not reply.tool_calls:
@@ -69,8 +72,25 @@ class Agent:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call.id,
-                    "content": json.dumps(self._run_tool_call(call), default=str),
+                    "content": _clip(json.dumps(self._run_tool_call(call), default=str), MAX_TOOL_RESULT_CHARS),
                 })
+
+    def _recover_from_rejection(self, messages: list[dict[str, Any]], rejection: LLMRejected) -> None:
+        """Remove what most likely triggered the rejection (the newest tool results) and explain why.
+
+        Resending the same conversation would just be rejected again.
+        """
+        for message in reversed(messages):
+            if message["role"] != "tool":
+                break
+            message["content"] = REMOVED_TOOL_RESULT
+        messages.append({
+            "role": "user",
+            "content": REJECTION_RECOVERY_MESSAGE.format(
+                reason=rejection.reason,
+                detail=_clip(str(rejection), MAX_REJECTION_DETAIL_CHARS),
+            ),
+        })
 
     def _run_tool_call(self, call: ChatCompletionMessageToolCall) -> Any:
         """Run one tool call. Failures are returned to the model as {"error": ...} so it can recover."""
@@ -102,3 +122,9 @@ class Agent:
     def _terminate(self, reason: str) -> None:
         self._log.write(f"** TERMINATED: {reason} **")
         return None
+
+
+def _clip(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated {len(text) - limit} characters]"

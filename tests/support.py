@@ -1,5 +1,6 @@
 """Test doubles and builders: a scripted model transport and in-memory tasks."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -17,7 +18,7 @@ class ScriptedTransport:
         self.requests: list[dict] = []
 
     def __call__(self, *, messages, **options):
-        self.requests.append({"messages": list(messages), **options})
+        self.requests.append({"messages": copy.deepcopy(messages), **options})
         step = self._steps.pop(0)
         if isinstance(step, Exception):
             raise step

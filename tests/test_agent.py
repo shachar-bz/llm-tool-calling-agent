@@ -4,7 +4,7 @@ import json
 from support import ScriptedTransport, final_reply, tool_call_reply
 
 from tool_agent.agent import Agent
-from tool_agent.llm import LLM
+from tool_agent.llm import LLM, LLMRejected
 from tool_agent.run_log import RunLog
 from tool_agent.tools import Tool, ToolRegistry
 from tool_agent.tools.calculator import CALCULATOR
@@ -137,3 +137,43 @@ def test_llm_calls_made_inside_tools_count_toward_the_cap(task):
     assert agent.run(task) is None
     assert len(transport.requests) == 1
     assert output.getvalue().splitlines()[-1] == "** TERMINATED: LLM call cap reached **"
+
+
+def test_rejected_request_is_retried_without_the_latest_tool_results(task):
+    agent, transport, output = make_agent([
+        tool_call_reply(("calculator", {"expression": "2 + 2"})),
+        LLMRejected("content_filter", "The response was filtered."),
+        final_reply("Recovered."),
+    ])
+
+    assert agent.run(task) == "Recovered."
+    retried = transport.requests[-1]["messages"]
+    assert retried[-2]["role"] == "tool"
+    assert retried[-2]["content"].startswith("[removed:")
+    assert retried[-1]["role"] == "user"
+    assert "rejected the previous request (content_filter)" in retried[-1]["content"]
+    assert "LLM request rejected (content_filter) = The response was filtered." in output.getvalue()
+
+
+def test_repeated_rejection_stops_the_run_instead_of_burning_the_budget(task):
+    agent, transport, output = make_agent([
+        tool_call_reply(("calculator", {"expression": "2 + 2"})),
+        LLMRejected("context_length_exceeded", "Too long."),
+        LLMRejected("context_length_exceeded", "Still too long."),
+        final_reply("never sent"),
+    ])
+
+    assert agent.run(task) is None
+    assert len(transport.requests) == 3
+    assert output.getvalue().splitlines()[-1] == "** TERMINATED: LLM request rejected again after recovery **"
+
+
+def test_oversized_tool_results_are_truncated(task):
+    dump = Tool("dump", "Returns a lot.", {"type": "object", "properties": {}}, handler=lambda: "x" * 50_000)
+    agent, transport, _ = make_agent([tool_call_reply(("dump", {})), final_reply("ok")], tools=(dump,))
+
+    agent.run(task)
+
+    [content] = [m["content"] for m in transport.requests[-1]["messages"] if m["role"] == "tool"]
+    assert len(content) < 20_100
+    assert content.endswith("characters]")

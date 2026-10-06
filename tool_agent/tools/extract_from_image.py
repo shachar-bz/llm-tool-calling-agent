@@ -41,7 +41,10 @@ def extract_from_image(image_path: Path, llm: LLM) -> dict:
             ],
         },
     ])
-    return json.loads(strip_code_fences(reply.content))
+    data = json.loads(strip_code_fences(reply.content or ""))
+    if not isinstance(data, dict):
+        raise ValueError(f"expected a JSON object from the vision model, got {type(data).__name__}")
+    return data
 
 
 def extract_from_image_tool(llm: LLM, workspace: Workspace) -> Tool:

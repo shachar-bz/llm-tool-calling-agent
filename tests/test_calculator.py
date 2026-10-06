@@ -32,3 +32,15 @@ def test_evaluates_arithmetic(expression, expected):
 def test_rejects_anything_but_arithmetic(expression):
     with pytest.raises(ValueError, match="unsupported expression"):
         calculator(expression)
+
+
+@pytest.mark.parametrize("expression", ["9 ** 9 ** 9", "(2 ** 1000) ** 1000", "10 ** 5000"])
+def test_refuses_huge_powers_before_computing_them(expression):
+    with pytest.raises(ValueError, match="result too large"):
+        calculator(expression)
+
+
+def test_allows_ordinary_powers():
+    assert calculator("2 ** 64") == "18446744073709551616"
+    assert calculator("1.05 ** 10") == str(1.05 ** 10)
+    assert calculator("2 ** -1") == "0.5"

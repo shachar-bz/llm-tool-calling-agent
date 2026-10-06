@@ -15,12 +15,24 @@ FUNCTIONS = {
     "max": max,
 }
 
+# Integer powers are exact, so 9 ** 9 ** 9 would grind for minutes. Refuse any
+# result over this many bits (about 3,000 digits) before computing it.
+MAX_POWER_BITS = 10_000
+
+
+def _power(base: float, exponent: float) -> float:
+    if isinstance(base, int) and isinstance(exponent, int) and exponent > 0:
+        if base.bit_length() * exponent > MAX_POWER_BITS:
+            raise ValueError("result too large")
+    return base ** exponent
+
+
 BINARY_OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
     ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
+    ast.Pow: _power,
 }
 
 UNARY_OPERATORS = {

@@ -20,7 +20,10 @@ def build_sql_query(natural_language: str, schema_description: str, llm: LLM) ->
         natural_language=natural_language,
     )
     reply = llm.complete([{"role": "user", "content": prompt}])
-    return strip_code_fences(reply.content)
+    sql = strip_code_fences(reply.content or "")
+    if not sql:
+        raise ValueError("the model returned no SQL")
+    return sql
 
 
 def build_sql_query_tool(llm: LLM) -> Tool:

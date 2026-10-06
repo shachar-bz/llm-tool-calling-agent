@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
-from fakes import ScriptedTransport, final_reply
+from support import ScriptedTransport, final_reply
 
 from tool_agent.llm import LLM, CallCapReached, OpenAITransport
 

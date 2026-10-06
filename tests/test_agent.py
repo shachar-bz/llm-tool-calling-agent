@@ -1,7 +1,7 @@
 import io
 import json
 
-from fakes import ScriptedTransport, final_reply, tool_call_reply
+from support import ScriptedTransport, final_reply, tool_call_reply
 
 from tool_agent.agent import Agent
 from tool_agent.llm import LLM

@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from tool_agent.task import Resource, Workspace
+from support import make_task
+
+from tool_agent.task import Workspace
 from tool_agent.tools.base import strip_code_fences
 from tool_agent.tools.execute_sql_query import execute_sql_query, execute_sql_query_tool
 from tool_agent.tools.write_file import write_file_tool
@@ -43,13 +45,13 @@ def test_execute_sql_query_reports_missing_database(tmp_path: Path):
 
 
 def test_execute_sql_tool_resolves_resource_names(orders_db: Path, tmp_path: Path):
-    tool = execute_sql_query_tool(Workspace(tmp_path, (Resource("my data/orders.db", ""),)))
+    tool = execute_sql_query_tool(Workspace(make_task(tmp_path, "my data/orders.db")))
 
     assert tool.handler(sql="SELECT COUNT(*) AS n FROM orders", db_path="orders.db") == [{"n": 3}]
 
 
 def test_write_file_tool_writes_under_the_task_root(tmp_path: Path):
-    tool = write_file_tool(Workspace(tmp_path))
+    tool = write_file_tool(Workspace(make_task(tmp_path)))
 
     message = tool.handler(file_content='{"ok": true}', file_name="out/result.json")
 

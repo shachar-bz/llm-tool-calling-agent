@@ -1,15 +1,11 @@
 from pathlib import Path
 
 import pytest
+from support import make_task
 
-from tool_agent.task import Resource, Task
+from tool_agent.task import Task
 
 
 @pytest.fixture
 def task(tmp_path: Path) -> Task:
-    return Task(
-        query_name="question.txt",
-        query_text="What is 2 + 2?",
-        resources=(Resource("data.db", "A SQLite database."),),
-        root=tmp_path,
-    )
+    return make_task(tmp_path, "data.db")

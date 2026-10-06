@@ -1,9 +1,12 @@
-"""Test doubles for driving the agent without a real model."""
+"""Test doubles and builders: a scripted model transport and in-memory tasks."""
 
 import json
+from pathlib import Path
 
 from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function
+
+from tool_agent.task import Resource, Task
 
 
 class ScriptedTransport:
@@ -41,3 +44,13 @@ def tool_call_reply(*calls: tuple[str, dict | str]) -> ChatCompletionMessage:
 
 def final_reply(text: str | None) -> ChatCompletionMessage:
     return ChatCompletionMessage(role="assistant", content=text)
+
+
+def make_task(root: Path, *resource_names: str, query_name: str = "question.txt") -> Task:
+    """A task rooted at `root` (files need not exist)."""
+    return Task(
+        manifest_path=root / "input.json",
+        query_name=query_name,
+        query_text="What is 2 + 2?",
+        resources=tuple(Resource(name, f"The {name} resource.") for name in resource_names),
+    )

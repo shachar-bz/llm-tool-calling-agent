@@ -1,4 +1,4 @@
-"""Command-line entry point: wires settings, the LLM client, the tools and the agent together."""
+"""Entry points: `run_task` assembles and runs one task; `main` is the command line around it."""
 
 import argparse
 import os
@@ -8,22 +8,30 @@ from dotenv import find_dotenv, load_dotenv
 from openai import OpenAI
 
 from .agent import Agent
-from .config import ConfigError, Settings
-from .llm import LLM, OpenAITransport
+from .config import ConfigError, Limits, ProviderSettings
+from .llm import LLM, OpenAITransport, Transport
 from .run_log import RunLog
-from .task import Workspace, load_task
+from .task import TaskError, Workspace, load_task
 from .tools import build_toolbox
 
 
-def run_task(manifest_path: str | os.PathLike, settings: Settings) -> str | None:
-    """Solve the task described by an input.json manifest. Returns the final answer, or None if capped."""
-    task = load_task(manifest_path)
-    workspace = Workspace(task.root, task.resources)
-    client = OpenAI(api_key=settings.api_key, base_url=settings.endpoint)
-    llm = LLM(OpenAITransport(client, settings.model), settings.max_llm_calls)
+def run_task(
+    manifest_path: str | os.PathLike,
+    transport: Transport,
+    limits: Limits = Limits(),
+) -> str | None:
+    """Solve the task described by an input.json manifest.
 
-    with RunLog.open(workspace.output_path(task.log_name)) as log:
-        agent = Agent(llm, build_toolbox(llm, workspace), log, settings.max_tool_calls)
+    Returns the model's final answer, or None if a call cap stopped the run.
+    Output files and the <query>.log transcript are written next to the manifest.
+    Raises TaskError if the manifest or query file can't be loaded.
+    """
+    task = load_task(manifest_path)
+    workspace = Workspace(task)
+    llm = LLM(transport, limits.max_llm_calls)
+
+    with RunLog.open(task.log_path) as log:
+        agent = Agent(llm, build_toolbox(llm, workspace), log, limits.max_tool_calls)
         return agent.run(task)
 
 
@@ -38,14 +46,31 @@ def main(argv: list[str] | None = None) -> int:
         default="input.json",
         help="path to the task's input.json (default: ./input.json)",
     )
+    parser.add_argument(
+        "--max-llm-calls",
+        type=int,
+        default=Limits.max_llm_calls,
+        metavar="N",
+        help="cap on model requests, including those made inside tools (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-tool-calls",
+        type=int,
+        default=Limits.max_tool_calls,
+        metavar="N",
+        help="cap on tool invocations (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv(find_dotenv(usecwd=True))
     try:
-        settings = Settings.from_env()
-    except ConfigError as error:
+        settings = ProviderSettings.from_env()
+        transport = OpenAITransport(
+            OpenAI(api_key=settings.api_key, base_url=settings.endpoint),
+            settings.model,
+        )
+        answer = run_task(args.manifest, transport, Limits(args.max_llm_calls, args.max_tool_calls))
+    except (ConfigError, TaskError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-
-    answer = run_task(args.manifest, settings)
     return 0 if answer is not None else 1

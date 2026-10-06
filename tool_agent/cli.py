@@ -23,7 +23,7 @@ def run_task(
     """Solve the task described by an input.json manifest.
 
     Returns the model's final answer, or None if a call cap stopped the run.
-    Output files and the <query>.log transcript are written next to the manifest.
+    Output files and the <query>.log run log are written next to the manifest.
     Raises TaskError if the manifest or query file can't be loaded.
     """
     task = load_task(manifest_path)

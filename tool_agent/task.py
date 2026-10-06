@@ -39,7 +39,7 @@ class Task:
 
     @property
     def log_path(self) -> Path:
-        """The transcript is named after the query: receipt_analysis.txt -> receipt_analysis.log."""
+        """The run log is named after the query: receipt_analysis.txt -> receipt_analysis.log."""
         return self.root / Path(self.query_name).with_suffix(".log")
 
 

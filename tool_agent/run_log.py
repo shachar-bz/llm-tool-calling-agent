@@ -1,4 +1,4 @@
-"""The run transcript: every agent step, echoed to stdout and to <query>.log."""
+"""The run log: every agent step, echoed to stdout and to <query>.log."""
 
 import sys
 from collections.abc import Iterator

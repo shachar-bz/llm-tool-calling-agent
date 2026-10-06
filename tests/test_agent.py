@@ -155,7 +155,7 @@ def test_rejected_request_is_retried_without_the_latest_tool_results(task):
     assert "LLM request rejected (content_filter) = The response was filtered." in output.getvalue()
 
 
-def test_repeated_rejection_stops_the_run_instead_of_burning_the_budget(task):
+def test_repeated_rejection_stops_the_run_instead_of_using_up_the_cap(task):
     agent, transport, output = make_agent([
         tool_call_reply(("calculator", {"expression": "2 + 2"})),
         LLMRejected("context_length_exceeded", "Too long."),

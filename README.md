@@ -40,17 +40,26 @@ flowchart LR
     A <-->|messages + tool schemas| L[LLM]
     A -->|tool call| R[ToolRegistry]
     R --> Tools
-    Tools -.->|LLM-backed tools| L
-    A --> G[RunLog: stdout + &lt;query&gt;.log]
-    B[Budget] -.->|caps LLM & tool calls| A
+    Tools -->|LLM-backed tools| L
+    Tools -->|every model-chosen path| W[Workspace]
+    L -.->|transport seam| P[OpenAI / Azure]
+    L -.->|transport seam| S[Scripted transport in tests]
+    A --> G["Run log: stdout + &lt;query&gt;.log"]
 ```
 
-- **`Agent`** ([agent.py](tool_agent/agent.py)) runs the loop. It sends the conversation and the tool schemas to the model, runs each tool call, and appends the result. It stops when the model answers without calling a tool. If a tool fails, gets malformed arguments or names a tool that doesn't exist, the error goes back to the model as `{"error": ...}` so it can recover instead of crashing the run.
-- **`Tool` / `ToolRegistry`** ([tools/base.py](tool_agent/tools/base.py)) keep each tool's JSON schema next to the code that runs it. Adding a tool takes one module plus one line in [`build_toolbox`](tool_agent/tools/__init__.py).
-- **`LLM`** ([llm.py](tool_agent/llm.py)) is one client shared by the agent loop and the LLM-backed tools. It charges every request to the run's **`Budget`**, which caps a run at 20 LLM calls and 20 tool calls.
-- **`Task` / `Workspace`** ([task.py](tool_agent/task.py)) load the query and resources from `input.json`. All file paths are resolved relative to the folder that holds `input.json`, so you can run a task from any directory.
+- **`Agent`** ([agent.py](tool_agent/agent.py)) runs the loop. It sends the conversation and the tool schemas to the model, runs each tool call, and appends the result. It stops when the model answers without calling a tool. If a tool fails, gets malformed arguments or names a tool that doesn't exist, the error goes back to the model as `{"error": ...}` so it can recover instead of crashing the run. If the provider rejects a request (content filter, context too long), the agent removes the newest tool results and retries once instead of resending the same content.
+- **`LLM`** ([llm.py](tool_agent/llm.py)) is the only way to reach the model. The agent loop and the LLM-backed tools (vision, text-to-SQL) all go through it, so it can enforce the **LLM-call cap** for every request. Behind it sits a **transport**: the OpenAI client in production, a scripted one in tests.
+- **`Tool` / `ToolRegistry`** ([tools/base.py](tool_agent/tools/base.py)) keep each tool's JSON schema next to the code that runs it. Adding a tool takes one module plus one line in [`build_toolbox`](tool_agent/tools/__init__.py), and the call caps apply to it automatically.
+- **`Workspace`** ([task.py](tool_agent/task.py)) checks every path the model chooses:
+  - paths that leave the task folder are refused, including `..`, absolute paths and symlinks;
+  - the task's own inputs and its log can't be overwritten;
+  - SQL runs read-only, with an allow-list authorizer, so `ATTACH` and `VACUUM INTO` can't touch the disk.
+
+Domain terms are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## Quickstart
+
+Requires Python 3.11+.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
@@ -58,9 +67,20 @@ pip install -e ".[dev]"
 cp .env.example .env        # then set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
 
 python -m tool_agent examples/receipt_analysis/input.json
+python -m tool_agent --help  # --max-llm-calls / --max-tool-calls (default 20 each)
 ```
 
-Outputs (`receipt_analysis_result.json` and the `receipt_analysis.log` transcript) are written next to `input.json`.
+Outputs (`receipt_analysis_result.json` and the `receipt_analysis.log` run log) are written next to `input.json`.
+
+From Python, `run_task` runs a task with any transport:
+
+```python
+from openai import OpenAI
+from tool_agent import Limits, OpenAITransport, run_task
+
+transport = OpenAITransport(OpenAI(api_key=..., base_url=...), "gpt-4.1-mini")
+answer = run_task("examples/receipt_analysis/input.json", transport, Limits(max_llm_calls=10))
+```
 
 ## Writing a task
 
@@ -84,20 +104,23 @@ The model sees the resource descriptions, so include table schemas for databases
 pytest
 ```
 
-The suite runs offline. A scripted fake LLM drives the agent loop through tool chaining, error recovery and both call caps. The tools are tested against real temporary SQLite files.
+The suite runs offline. A scripted transport stands in for the provider, so everything above it runs for real:
+- whole runs through `run_task` on temporary task folders;
+- the LLM-call cap, including requests made inside tools;
+- recovery from tool errors and provider rejections;
+- path containment, with SQLite tested against real database files.
 
 ## Project layout
 
 ```text
 tool_agent/
-  agent.py          the tool-calling loop
-  cli.py            entry point: wires settings, client, tools and agent
-  config.py         settings from environment variables
-  task.py           Task manifest loading and Workspace path resolution
-  llm.py            budget-charging chat-completions client
-  budget.py         LLM / tool call caps
-  run_log.py        transcript to stdout and <query>.log
-  prompts.py        system prompt and user message
+  agent.py          the tool-calling loop, tool-call cap, rejection recovery
+  cli.py            run_task (assembles a run) and the command line
+  config.py         provider settings (env) and call caps
+  task.py           Task manifest loading; Workspace path containment
+  llm.py            LLM (LLM-call cap) and the transport seam
+  run_log.py        run log to stdout and <query>.log
+  prompts.py        system prompt, user message, recovery note
   tools/            one module per tool, plus Tool/ToolRegistry in base.py
 examples/receipt_analysis/   sample task with validator
 tests/

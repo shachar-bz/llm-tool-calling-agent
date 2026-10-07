@@ -12,7 +12,7 @@ from .config import ConfigError, Limits, ProviderSettings
 from .llm import LLM, OpenAITransport, Transport
 from .run_log import RunLog
 from .task import TaskError, Workspace, load_task
-from .tools import build_toolbox
+from .toolbox import build_toolbox
 
 
 def run_task(
@@ -37,7 +37,7 @@ def run_task(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="tool-agent",
+        prog="agent",
         description="Answer a query with an LLM that chains tools (vision, SQL, calculator, web search, files).",
     )
     parser.add_argument(

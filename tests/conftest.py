@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from support import make_task
 
-from tool_agent.task import Task
+from agent.task import Task
 
 
 @pytest.fixture

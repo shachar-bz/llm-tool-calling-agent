@@ -1,7 +1,13 @@
 """Text-to-SQL tool: asks the model to write a query for a described SQLite schema."""
 
-from ..llm import LLM
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from .base import Tool, strip_code_fences
+
+if TYPE_CHECKING:
+    from agent.llm import LLM
 
 PROMPT = (
     "Given this schema: {schema_description}\n"

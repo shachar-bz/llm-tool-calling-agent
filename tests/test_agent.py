@@ -3,11 +3,11 @@ import json
 
 from support import ScriptedTransport, final_reply, tool_call_reply
 
-from tool_agent.agent import Agent
-from tool_agent.llm import LLM, LLMRejected
-from tool_agent.run_log import RunLog
-from tool_agent.tools import Tool, ToolRegistry
-from tool_agent.tools.calculator import CALCULATOR
+from agent.agent import Agent
+from agent.llm import LLM, LLMRejected
+from agent.run_log import RunLog
+from tools import Tool, ToolRegistry
+from tools.calculator import CALCULATOR
 
 
 def make_agent(replies, tools=(CALCULATOR,), max_llm_calls=20, max_tool_calls=20):

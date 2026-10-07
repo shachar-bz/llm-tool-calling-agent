@@ -5,10 +5,10 @@ import pytest
 
 from support import make_task
 
-from tool_agent.task import Workspace
-from tool_agent.tools.base import strip_code_fences
-from tool_agent.tools.execute_sql_query import execute_sql_query, execute_sql_query_tool
-from tool_agent.tools.write_file import write_file_tool
+from agent.task import Workspace
+from tools.base import strip_code_fences
+from tools.execute_sql_query import execute_sql_query, execute_sql_query_tool
+from tools.write_file import write_file_tool
 
 
 @pytest.fixture

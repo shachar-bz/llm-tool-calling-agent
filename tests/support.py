@@ -7,7 +7,7 @@ from pathlib import Path
 from openai.types.chat import ChatCompletionMessage, ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function
 
-from tool_agent.task import Resource, Task
+from agent.task import Resource, Task
 
 
 class ScriptedTransport:

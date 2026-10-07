@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from support import make_task
 
-from tool_agent.task import Resource, TaskError, Workspace, load_task
+from agent.task import Resource, TaskError, Workspace, load_task
 
 
 def write_manifest(root: Path, manifest) -> Path:

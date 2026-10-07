@@ -1,11 +1,16 @@
 """Runs SQL against a SQLite file. The model can read data but not modify or copy it."""
 
+from __future__ import annotations
+
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..task import Workspace
 from .base import Tool
+
+if TYPE_CHECKING:
+    from agent.task import Workspace
 
 # Read-only mode alone is not enough: it still lets ATTACH create files and
 # VACUUM INTO copy the whole database anywhere on disk. So only reads are authorized.

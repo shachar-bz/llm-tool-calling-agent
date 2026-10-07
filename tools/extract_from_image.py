@@ -1,12 +1,17 @@
 """Vision tool: reads a receipt/invoice image and returns its fields as JSON."""
 
+from __future__ import annotations
+
 import base64
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..llm import LLM
-from ..task import Workspace
 from .base import Tool, strip_code_fences
+
+if TYPE_CHECKING:
+    from agent.llm import LLM
+    from agent.task import Workspace
 
 PROMPT = (
     "Return ONLY a JSON object with keys: merchant (string), date (YYYY-MM-DD string), "

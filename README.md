@@ -47,10 +47,10 @@ flowchart LR
     A --> G["Run log: stdout + &lt;query&gt;.log"]
 ```
 
-- **`Agent`** ([agent.py](tool_agent/agent.py)) runs the loop. It sends the conversation and the tool schemas to the model, runs each tool call, and appends the result. It stops when the model answers without calling a tool. If a tool fails, gets malformed arguments or names a tool that doesn't exist, the error goes back to the model as `{"error": ...}` so it can recover instead of crashing the run. If the provider rejects a request (content filter, context too long), the agent removes the newest tool results and retries once instead of resending the same content.
-- **`LLM`** ([llm.py](tool_agent/llm.py)) is the only way to reach the model. The agent loop and the LLM-backed tools (vision, text-to-SQL) all go through it, so it can enforce the **LLM-call cap** for every request. Behind it sits a **transport**: the OpenAI client in production, a scripted one in tests.
-- **`Tool` / `ToolRegistry`** ([tools/base.py](tool_agent/tools/base.py)) keep each tool's JSON schema next to the code that runs it. Adding a tool takes one module plus one line in [`build_toolbox`](tool_agent/tools/__init__.py), and the call caps apply to it automatically.
-- **`Workspace`** ([task.py](tool_agent/task.py)) checks every path the model chooses:
+- **`Agent`** ([agent.py](agent/agent.py)) runs the loop. It sends the conversation and the tool schemas to the model, runs each tool call, and appends the result. It stops when the model answers without calling a tool. If a tool fails, gets malformed arguments or names a tool that doesn't exist, the error goes back to the model as `{"error": ...}` so it can recover instead of crashing the run. If the provider rejects a request (content filter, context too long), the agent removes the newest tool results and retries once instead of resending the same content.
+- **`LLM`** ([llm.py](agent/llm.py)) is the only way to reach the model. The agent loop and the LLM-backed tools (vision, text-to-SQL) all go through it, so it can enforce the **LLM-call cap** for every request. Behind it sits a **transport**: the OpenAI client in production, a scripted one in tests.
+- **`Tool` / `ToolRegistry`** ([tools/base.py](tools/base.py)) keep each tool's JSON schema next to the code that runs it. Adding a tool takes one module plus one line in [`build_toolbox`](agent/toolbox.py), and the call caps apply to it automatically.
+- **`Workspace`** ([task.py](agent/task.py)) checks every path the model chooses:
   - paths that leave the task folder are refused, including `..`, absolute paths and symlinks;
   - the task's own inputs and its log can't be overwritten;
   - SQL runs read-only, with an allow-list authorizer, so `ATTACH` and `VACUUM INTO` can't touch the disk.
@@ -66,8 +66,8 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env        # then set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
 
-python -m tool_agent examples/receipt_analysis/input.json
-python -m tool_agent --help  # --max-llm-calls / --max-tool-calls (default 20 each)
+python -m agent examples/receipt_analysis/input.json
+python -m agent --help  # --max-llm-calls / --max-tool-calls (default 20 each)
 ```
 
 Outputs (`receipt_analysis_result.json` and the `receipt_analysis.log` run log) are written next to `input.json`.
@@ -76,7 +76,7 @@ From Python, `run_task` runs a task with any transport:
 
 ```python
 from openai import OpenAI
-from tool_agent import Limits, OpenAITransport, run_task
+from agent import Limits, OpenAITransport, run_task
 
 transport = OpenAITransport(OpenAI(api_key=..., base_url=...), "gpt-4.1-mini")
 answer = run_task("examples/receipt_analysis/input.json", transport, Limits(max_llm_calls=10))
@@ -113,7 +113,7 @@ The suite runs offline. A scripted transport stands in for the provider, so ever
 ## Project layout
 
 ```text
-tool_agent/
+agent/
   agent.py          the tool-calling loop, tool-call cap, rejection recovery
   cli.py            run_task (assembles a run) and the command line
   config.py         provider settings (env) and call caps
@@ -121,7 +121,8 @@ tool_agent/
   llm.py            LLM (LLM-call cap) and the transport seam
   run_log.py        run log to stdout and <query>.log
   prompts.py        system prompt, user message, recovery note
-  tools/            one module per tool, plus Tool/ToolRegistry in base.py
+  toolbox.py        build_toolbox: binds the LLM and Workspace to the tools
+tools/              the tools themselves: one module per tool, plus Tool/ToolRegistry in base.py
 examples/receipt_analysis/   sample task with validator
 tests/
 ```

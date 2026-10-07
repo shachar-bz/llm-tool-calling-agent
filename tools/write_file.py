@@ -1,9 +1,14 @@
 """Writes the task's output files (paths are relative to the task root)."""
 
-from pathlib import Path
+from __future__ import annotations
 
-from ..task import Workspace
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 from .base import Tool
+
+if TYPE_CHECKING:
+    from agent.task import Workspace
 
 
 def write_file(path: Path, content: str) -> int:

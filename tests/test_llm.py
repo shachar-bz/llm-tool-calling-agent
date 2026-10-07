@@ -5,7 +5,7 @@ import openai
 import pytest
 from support import ScriptedTransport, final_reply
 
-from tool_agent.llm import LLM, CallCapReached, LLMRejected, OpenAITransport
+from agent.llm import LLM, CallCapReached, LLMRejected, OpenAITransport
 
 
 def test_llm_refuses_requests_past_the_cap():

@@ -1,6 +1,6 @@
 import pytest
 
-from tool_agent.tools.calculator import calculator
+from tools.calculator import calculator
 
 
 @pytest.mark.parametrize(

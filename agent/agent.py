@@ -9,7 +9,7 @@ from .llm import LLM, CallCapReached, LLMRejected
 from .prompts import REJECTION_RECOVERY_MESSAGE, REMOVED_TOOL_RESULT, system_prompt, user_message
 from .run_log import RunLog
 from .task import Task
-from .tools import ToolRegistry
+from tools import ToolRegistry
 
 # Keeps one oversized result (e.g. SELECT * on a big table) from overflowing the context.
 MAX_TOOL_RESULT_CHARS = 20_000

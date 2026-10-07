@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 from support import ScriptedTransport, final_reply, tool_call_reply
 
-from tool_agent import Limits, run_task
-from tool_agent.cli import main
+from agent import Limits, run_task
+from agent.cli import main
 
 SCHEMA = "orders(merchant TEXT, amount REAL)"
 SQL = "SELECT SUM(amount) AS total FROM orders WHERE merchant = 'Cafe'"

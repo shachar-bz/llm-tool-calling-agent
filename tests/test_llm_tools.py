@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from support import ScriptedTransport, final_reply
 
-from tool_agent.llm import LLM
-from tool_agent.tools.build_sql_query import build_sql_query
-from tool_agent.tools.extract_from_image import extract_from_image
+from agent.llm import LLM
+from tools.build_sql_query import build_sql_query
+from tools.extract_from_image import extract_from_image
 
 
 def llm_replying(*texts: str | None) -> tuple[LLM, ScriptedTransport]:
